@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitácora - Asistente</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        /* TEMA VIOLETA/AZUL PARA DIFERENCIAR DEL ADMIN */
+        :root { 
+            --primary: #8b5cf6;       /* Violeta */
+            --primary-dark: #7c3aed; 
+            --bg-body: #f5f3ff; 
+            --bg-card: #ffffff; 
+            --text-main: #0f172a; 
+            --text-muted: #64748b; 
+            --border: #e0e7ff; 
+            --radius: 12px; 
+        }
+        
+        body.dark-mode { 
+            --primary: #a78bfa; 
+            --bg-body: #0f172a; 
+            --bg-card: #1e293b; 
+            --text-main: #f1f5f9; 
+            --text-muted: #94a3b8; 
+            --border: #334155; 
+        }
+        
+        * { box-sizing: border-box; outline: none; }
+        body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg-body); color: var(--text-main); margin: 0; padding: 0; height: 100vh; overflow: hidden; transition: 0.3s; }
+
+        /* LOGIN */
+        #login-view { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 5000; display: flex; flex-direction: column; justify-content: center; align-items: center; background: var(--bg-body); }
+        .pin-card { background: var(--bg-card); padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; width: 90%; max-width: 400px; }
+        .pin-input { font-size: 3rem; letter-spacing: 10px; text-align: center; width: 100%; border: none; border-bottom: 3px solid var(--primary); background: transparent; color: var(--text-main); font-family: monospace; margin: 20px 0; font-weight: bold; }
+
+        /* APP LAYOUT */
+        .main-wrapper { max-width: 800px; margin: 0 auto; padding: 15px; display: none; height: 100%; grid-template-rows: auto auto 1fr; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; background: var(--bg-card); padding: 15px; border-radius: var(--radius); box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+
+        /* TABS */
+        .nav-tabs { display: flex; gap: 10px; margin-bottom: 15px; }
+        .nav-btn { flex: 1; padding: 12px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-muted); border-radius: var(--radius); cursor: pointer; font-weight: 600; display: flex; justify-content: center; gap: 8px; transition: 0.2s; }
+        .nav-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+        /* CARDS & INPUTS */
+        .card { background: var(--bg-card); border-radius: var(--radius); padding: 20px; border: 1px solid var(--border); height: 100%; overflow: hidden; display: flex; flex-direction: column; }
+        input, select { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); color: var(--text-main); }
+        input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2); }
+        
+        button.action-btn { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 1rem; margin-top: 10px; }
+        button.secondary-btn { background: transparent; border: 1px solid var(--border); color: var(--text-muted); width: auto; padding: 8px 15px; border-radius: 8px; cursor: pointer; }
+
+        /* LISTA */
+        ul { list-style: none; padding: 0; margin: 0; overflow-y: auto; flex: 1; }
+        li.item-row { background: rgba(0,0,0,0.03); padding: 15px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+
+        /* MODAL & TOAST */
+        #toast { visibility: hidden; min-width: 250px; background: #333; color: #fff; text-align: center; border-radius: 4px; padding: 16px; position: fixed; z-index: 7000; left: 50%; bottom: 30px; transform: translateX(-50%); }
+        #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+        @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
+        @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+    </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-view">
+    <div class="pin-card">
+        <h2 style="color:var(--primary);"><i class="fas fa-user-astronaut"></i> Acceso Asistente</h2>
+        <p style="color:var(--text-muted)">Ingresa tu código personal</p>
+        <input type="tel" id="assist-code" class="pin-input" maxlength="6" placeholder="000000">
+        <button class="action-btn" onclick="connectAssistant()">INGRESAR</button>
+        <p id="error-msg" style="color:var(--danger); margin-top:10px; font-weight:bold;"></p>
+    </div>
+</div>
+
+<!-- APP -->
+<div id="app-view" class="main-wrapper">
+    <div class="header">
+        <div style="display:flex; align-items:center; gap:10px;">
+            <div style="width:40px; height:40px; background:var(--primary); border-radius:50%; display:flex; align-items:center; justify-content:center; color:white;"><i class="fas fa-user"></i></div>
+            <div>
+                <h3 style="margin:0;">Asistente</h3>
+                <span style="font-size:0.8rem; color:var(--success)">● Conectado</span>
+            </div>
+        </div>
+        <button class="secondary-btn" onclick="disconnect()"><i class="fas fa-sign-out-alt"></i> Salir</button>
+    </div>
+
+    <!-- TABS -->
+    <div class="nav-tabs">
+        <button class="nav-btn active" onclick="setTab('add')"><i class="fas fa-plus-circle"></i> Nuevo Producto</button>
+        <button class="nav-btn" onclick="setTab('view')"><i class="fas fa-search"></i> Ver Inventario</button>
+    </div>
+
+    <div class="content-area" style="height:100%; overflow:hidden;">
+        
+        <!-- PESTAÑA: AÑADIR -->
+        <div id="tab-add" class="card">
+            <h3 style="margin-top:0; color:var(--primary);">📦 Alta de Producto</h3>
+            <div style="overflow-y:auto; padding-right:5px;">
+                
+                <label style="font-size:0.9em; font-weight:bold; color:var(--text-muted)">Datos Básicos</label>
+                <input id="new-name" placeholder="Nombre del Producto (Ej: Coca Cola)">
+                <div style="display:flex; gap:10px;">
+                    <input id="new-brand" placeholder="Marca">
+                    <input id="new-model" placeholder="Modelo">
+                </div>
+
+                <label style="font-size:0.9em; font-weight:bold; color:var(--text-muted)">Inventario y Medidas</label>
+                <div style="display:flex; gap:10px; align-items:flex-end;">
+                    <div style="flex:1">
+                        <label style="font-size:0.8em">Cantidad</label>
+                        <input type="number" id="new-qty" placeholder="0" step="0.001">
+                    </div>
+                    <div style="flex:1">
+                        <label style="font-size:0.8em">Unidad</label>
+                        <select id="new-measure">
+                            <optgroup label="📦 Básico"><option value="un" selected>Unidad (un)</option></optgroup>
+                            <optgroup label="⚖️ Peso"><option value="kg">Kilo (kg)</option><option value="gr">Gramos (gr)</option></optgroup>
+                            <optgroup label="💧 Líquido"><option value="l">Litro (L)</option><option value="ml">Mililitro (ml)</option></optgroup>
+                        </select>
+                    </div>
+                </div>
+
+                <label style="font-size:0.9em; font-weight:bold; color:var(--text-muted)">Precio y Ubicación</label>
+                <div style="display:flex; gap:10px;">
+                    <input type="text" id="new-price" placeholder="Precio ($)">
+                    <select id="new-store">
+                        <option value="">🌐 Global (Depósito)</option>
+                        <!-- Se llena con JS -->
+                    </select>
+                </div>
+
+                <button class="action-btn" onclick="submitProduct()">Guardar Producto</button>
+            </div>
+        </div>
+
+        <!-- PESTAÑA: VER INVENTARIO -->
+        <div id="tab-view" class="card" style="display:none;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0;">🔎 Inventario</h3>
+                <button class="secondary-btn" onclick="refreshInventory()" style="padding:5px 10px;"><i class="fas fa-sync"></i></button>
+            </div>
+            <input id="search-input" placeholder="Buscar por nombre..." style="margin-top:10px;" onkeyup="renderInventory()">
+            
+            <ul id="inventory-list">
+                <!-- Items -->
+            </ul>
+        </div>
+
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+    // --- CREDENCIALES (LAS MISMAS DEL ADMIN/POS) ---
+    const SUPABASE_URL = 'https://yjfzoqosaajwujwmmmya.supabase.co'; 
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlqZnpvcW9zYWFqd3Vqd21tbXlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyOTg5MzAsImV4cCI6MjA3OTg3NDkzMH0.rj4L0ig7QrGwI2LFRgglA0gSRumurMCLqF8JqH9kXgI';
+
+    let supabaseClient = null;
+    let activeCode = null;
+    let products = [];
+    let stores = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+        try {
+            supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            const savedCode = localStorage.getItem('assistant_code');
+            if(savedCode) { 
+                document.getElementById('assist-code').value = savedCode;
+                connectAssistant();
+            }
+        } catch(e) { console.error(e); }
+    });
+
+    async function connectAssistant() {
+        const code = document.getElementById('assist-code').value.trim();
+        const err = document.getElementById('error-msg');
+        
+        if(code.length !== 6) { err.textContent = "El código debe tener 6 dígitos"; return; }
+        err.textContent = "Conectando...";
+
+        try {
+            // 1. Validar obteniendo inventario
+            const { data, error } = await supabaseClient.rpc('get_inventory_for_assistant', { assistant_code: code });
+            
+            if(error) throw new Error("Código inválido o error de conexión");
+            
+            // 2. Obtener locales para el select
+            const { data: storesData } = await supabaseClient.rpc('get_stores_for_assistant', { assistant_code: code });
+
+            activeCode = code;
+            products = data || [];
+            stores = storesData || [];
+            localStorage.setItem('assistant_code', code);
+
+            populateStores();
+            renderInventory();
+
+            document.getElementById('login-view').style.display = 'none';
+            document.getElementById('app-view').style.display = 'grid';
+
+        } catch (e) {
+            err.textContent = "Error: " + e.message;
+            localStorage.removeItem('assistant_code');
+        }
+    }
+
+    function populateStores() {
+        const select = document.getElementById('new-store');
+        select.innerHTML = '<option value="">🌐 Global (Depósito)</option>';
+        stores.forEach(s => {
+            select.innerHTML += `<option value="${s.code}">📍 ${s.store_name}</option>`;
+        });
+    }
+
+    // --- ACCIONES ---
+
+    async function submitProduct() {
+        const name = document.getElementById('new-name').value;
+        const qty = parseFloat(document.getElementById('new-qty').value);
+        let price = document.getElementById('new-price').value.replace(',', '.');
+        
+        if(!name || isNaN(qty) || !price) return showToast("Faltan datos obligatorios");
+
+        const payload = {
+            assistant_code: activeCode,
+            p_name: name,
+            p_brand: document.getElementById('new-brand').value,
+            p_model: document.getElementById('new-model').value,
+            p_qty: qty,
+            p_price: parseFloat(price),
+            p_unit: document.getElementById('new-measure').value,
+            p_store_code: document.getElementById('new-store').value || null
+        };
+
+        const { error } = await supabaseClient.rpc('add_product_by_assistant', payload);
+
+        if(error) {
+            alert("Error al guardar: " + error.message);
+        } else {
+            showToast("✅ Producto Guardado");
+            // Limpiar campos
+            document.querySelectorAll('input').forEach(i => i.value = '');
+            refreshInventory();
+        }
+    }
+
+    async function refreshInventory() {
+        const { data } = await supabaseClient.rpc('get_inventory_for_assistant', { assistant_code: activeCode });
+        if(data) {
+            products = data;
+            renderInventory();
+            showToast("Inventario actualizado");
+        }
+    }
+
+    function renderInventory() {
+        const list = document.getElementById('inventory-list');
+        list.innerHTML = '';
+        const term = document.getElementById('search-input').value.toLowerCase();
+
+        products.filter(p => p.name.toLowerCase().includes(term)).forEach(p => {
+            // Nombre del local
+            let storeName = "Global";
+            const foundStore = stores.find(s => s.code === p.store_code);
+            if(foundStore) storeName = foundStore.store_name;
+
+            const unit = p.measurement_unit || 'un';
+
+            list.innerHTML += `
+            <li class="item-row">
+                <div style="flex:1">
+                    <b>${p.name}</b> <small>(${p.brand || ''})</small><br>
+                    <span style="font-size:0.8em; color:var(--primary);"><i class="fas fa-map-marker-alt"></i> ${storeName}</span>
+                </div>
+                <div style="text-align:right">
+                    <div style="font-weight:bold;">${p.quantity} ${unit}</div>
+                    <small>$${p.price}</small>
+                </div>
+            </li>`;
+        });
+    }
+
+    // --- UTILS ---
+    function setTab(t) {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+        document.getElementById('tab-add').style.display = t==='add' ? 'flex' : 'none';
+        document.getElementById('tab-view').style.display = t==='view' ? 'flex' : 'none';
+    }
+
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        t.textContent = msg; t.className = 'show';
+        setTimeout(() => t.className = '', 3000);
+    }
+
+    function disconnect() {
+        localStorage.removeItem('assistant_code');
+        location.reload();
+    }
+</script>
+</body>
+</html>
